@@ -171,40 +171,16 @@ namespace MultiDbScriptDeployer.Controls
 
         private async void BtnTest_Click(object sender, EventArgs e)
         {
-            if (!Connection.IsValid())
-            {
-                ShowStatus("Please fill in all fields", Color.Orange);
-                return;
-            }
-
             btnTest.Enabled = false;
             btnTest.Text = "Testing...";
-            ShowStatus("Testing connection...", Color.LightBlue);
 
-            try
-            {
-                await System.Threading.Tasks.Task.Run(() =>
-                {
-                    using (var conn = new System.Data.SqlClient.SqlConnection(Connection.GetConnectionString()))
-                    {
-                        conn.Open();
-                    }
-                });
+            await TestConnectionAsync();
 
-                ShowStatus("✓ Connection successful", Color.LightGreen);
-            }
-            catch (Exception ex)
-            {
-                ShowStatus($"✗ Failed: {ex.Message}", Color.LightCoral);
-            }
-            finally
-            {
-                btnTest.Enabled = true;
-                btnTest.Text = "Test";
-            }
+            btnTest.Enabled = true;
+            btnTest.Text = "Test";
         }
 
-        private void ShowStatus(string message, Color color)
+        public void ShowStatus(string message, Color color)
         {
             pnlStatus.BackColor = color;
             pnlStatus.Visible = true;
@@ -220,6 +196,36 @@ namespace MultiDbScriptDeployer.Controls
                 Font = new Font(this.Font.FontFamily, 8)
             };
             pnlStatus.Controls.Add(label);
+        }
+
+        public async Task<bool> TestConnectionAsync()
+        {
+            if (!Connection.IsValid())
+            {
+                ShowStatus("Please fill in all fields", Color.Orange);
+                return false;
+            }
+
+            ShowStatus("Testing connection...", Color.LightBlue);
+
+            try
+            {
+                await System.Threading.Tasks.Task.Run(() =>
+                {
+                    using (var conn = new System.Data.SqlClient.SqlConnection(Connection.GetConnectionString()))
+                    {
+                        conn.Open();
+                    }
+                });
+
+                ShowStatus("✓ Connection successful", Color.LightGreen);
+                return true;
+            }
+            catch (Exception ex)
+            {
+                ShowStatus($"✗ Failed: {ex.Message}", Color.LightCoral);
+                return false;
+            }
         }
 
         public void SetConnection(DatabaseConnection connection)

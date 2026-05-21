@@ -422,6 +422,7 @@ namespace MultiDbScriptDeployer
             }
         }
 
+
         private async void BtnTestAll_Click(object sender, EventArgs e)
         {
             if (_connectionControls.Count == 0)
@@ -431,9 +432,16 @@ namespace MultiDbScriptDeployer
                 return;
             }
 
-            // Disable button during testing
+            // Disable all test buttons and Test All button during testing
             btnTestAll.Enabled = false;
             btnTestAll.Text = "Testing...";
+
+            // Disable individual test buttons
+            foreach (var control in _connectionControls)
+            {
+                control.Enabled = false;
+            }
+
             statusLabel.Text = "Testing all connections...";
 
             int successCount = 0;
@@ -445,37 +453,40 @@ namespace MultiDbScriptDeployer
             _logger.LogInfo($"Total connections: {totalConnections}");
             _logger.LogInfo("========================================");
 
-            foreach (var control in _connectionControls)
+            for (int i = 0; i < _connectionControls.Count; i++)
             {
+                var control = _connectionControls[i];
                 var connection = control.Connection;
+
+                // Update status to show current progress
+                statusLabel.Text = $"Testing connection {i + 1}/{totalConnections}...";
 
                 if (!connection.IsValid())
                 {
                     _logger.LogWarning($"Skipping invalid connection: {connection}");
+                    control.ShowStatus("✗ Invalid - missing fields", Color.Orange);
                     failCount++;
                     continue;
                 }
 
-                _logger.LogInfo($"Testing: {connection}");
+                _logger.LogInfo($"Testing [{i + 1}/{totalConnections}]: {connection}");
 
-                try
+                // Call the TestConnectionAsync method which shows visual feedback
+                bool success = await control.TestConnectionAsync();
+
+                if (success)
                 {
-                    await System.Threading.Tasks.Task.Run(() =>
-                    {
-                        using (var conn = new System.Data.SqlClient.SqlConnection(connection.GetConnectionString()))
-                        {
-                            conn.Open();
-                        }
-                    });
-
                     successCount++;
                     _logger.LogSuccess($"✓ Connection successful: {connection}");
                 }
-                catch (Exception ex)
+                else
                 {
                     failCount++;
-                    _logger.LogError($"✗ Connection failed: {connection}", ex);
+                    _logger.LogError($"✗ Connection failed: {connection}");
                 }
+
+                // Small delay so user can see the status change
+                await System.Threading.Tasks.Task.Delay(100);
             }
 
             _logger.LogInfo("========================================");
@@ -484,7 +495,6 @@ namespace MultiDbScriptDeployer
             _logger.LogError($"Failed: {failCount}");
             _logger.LogInfo("========================================");
 
-            // Show summary
             string message = $"Connection Test Results:\n\n" +
                             $"Total: {totalConnections}\n" +
                             $"Successful: {successCount}\n" +
@@ -494,7 +504,12 @@ namespace MultiDbScriptDeployer
                 MessageBoxButtons.OK,
                 failCount == 0 ? MessageBoxIcon.Information : MessageBoxIcon.Warning);
 
-            // Restore button
+            // Re-enable all controls
+            foreach (var control in _connectionControls)
+            {
+                control.Enabled = true;
+            }
+
             btnTestAll.Enabled = true;
             btnTestAll.Text = "Test All Connections";
             statusLabel.Text = failCount == 0 ?
