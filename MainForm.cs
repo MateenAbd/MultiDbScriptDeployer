@@ -55,6 +55,9 @@ namespace MultiDbScriptDeployer
             this.MinimumSize = new Size(1000, 600);
             this.StartPosition = FormStartPosition.CenterScreen;
 
+            // Set taskbar icon from embedded resource
+            SetFormIcon();
+
             // Connections Panel (Top Left)
             lblConnectionsTitle = new Label
             {
@@ -618,6 +621,41 @@ namespace MultiDbScriptDeployer
             else
             {
                 statusLabel.Text = $"Deploying to server {progress.CurrentIndex}/{progress.TotalCount}: {progress.CurrentServer}";
+            }
+        }
+
+        private void SetFormIcon()
+        {
+            try
+            {
+                var assembly = System.Reflection.Assembly.GetExecutingAssembly();
+                var resourceName = "MultiDbScriptDeployer.app.ico";
+
+                using (var stream = assembly.GetManifestResourceStream(resourceName))
+                {
+                    if (stream != null)
+                    {
+                        this.Icon = new Icon(stream);
+                    }
+                }
+            }
+            catch (Exception ex)
+            {
+                // Log if icon loading fails (optional)
+                System.Diagnostics.Debug.WriteLine($"Failed to load icon: {ex.Message}");
+
+                // Fallback: try loading from file
+                try
+                {
+                    if (System.IO.File.Exists("app.ico"))
+                    {
+                        this.Icon = new Icon("app.ico");
+                    }
+                }
+                catch
+                {
+                    // Will use default Windows icon
+                }
             }
         }
     }
