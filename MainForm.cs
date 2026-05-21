@@ -14,6 +14,7 @@ namespace MultiDbScriptDeployer
     {
         private Panel pnlConnections;
         private Button btnAddConnection;
+        private Button btnTestAll;
         private TextBox txtScript;
         private Button btnDeploy;
         private Button btnLoadScript;
@@ -40,7 +41,7 @@ namespace MultiDbScriptDeployer
             _connectionControls = new List<DatabaseConnectionControl>();
 
             InitializeComponents();
-            
+
             _logger.LogAdded += Logger_LogAdded;
             _logger.LogInfo("Application started");
         }
@@ -95,6 +96,15 @@ namespace MultiDbScriptDeployer
                 Size = new Size(140, 30)
             };
             btnLoadConnections.Click += BtnLoadConnections_Click;
+
+            btnTestAll = new Button
+            {
+                Text = "Test All Connections",
+                Location = new Point(520, 290),
+                Size = new Size(140, 30),
+                BackColor = Color.LightSkyBlue
+            };
+            btnTestAll.Click += BtnTestAll_Click;
 
             // Script Panel (Top Right)
             lblScriptTitle = new Label
@@ -187,7 +197,7 @@ namespace MultiDbScriptDeployer
             this.Controls.AddRange(new Control[]
             {
                 lblConnectionsTitle, pnlConnections,
-                btnAddConnection, btnSaveConnections, btnLoadConnections,
+                btnAddConnection, btnSaveConnections, btnLoadConnections, btnTestAll,
                 lblScriptTitle, txtScript, btnLoadScript, btnDeploy,
                 progressBar,
                 lblLogTitle, txtLog, btnClearLog, btnOpenLogFile,
@@ -224,7 +234,7 @@ namespace MultiDbScriptDeployer
             }
             else
             {
-                MessageBox.Show("You must have at least one connection.", "Cannot Remove", 
+                MessageBox.Show("You must have at least one connection.", "Cannot Remove",
                     MessageBoxButtons.OK, MessageBoxIcon.Warning);
             }
         }
@@ -260,7 +270,7 @@ namespace MultiDbScriptDeployer
                     }
                     catch (Exception ex)
                     {
-                        MessageBox.Show($"Error loading file: {ex.Message}", "Error", 
+                        MessageBox.Show($"Error loading file: {ex.Message}", "Error",
                             MessageBoxButtons.OK, MessageBoxIcon.Error);
                         _logger.LogError("Failed to load script file", ex);
                     }
@@ -273,7 +283,7 @@ namespace MultiDbScriptDeployer
             // Validate
             if (string.IsNullOrWhiteSpace(txtScript.Text))
             {
-                MessageBox.Show("Please enter a SQL script to deploy.", "Validation Error", 
+                MessageBox.Show("Please enter a SQL script to deploy.", "Validation Error",
                     MessageBoxButtons.OK, MessageBoxIcon.Warning);
                 return;
             }
@@ -283,7 +293,7 @@ namespace MultiDbScriptDeployer
 
             if (invalidConnections.Any())
             {
-                MessageBox.Show("Please fill in all connection details for all database connections.", 
+                MessageBox.Show("Please fill in all connection details for all database connections.",
                     "Validation Error", MessageBoxButtons.OK, MessageBoxIcon.Warning);
                 return;
             }
@@ -315,17 +325,17 @@ namespace MultiDbScriptDeployer
                                 $"Failed: {deploymentResult.FailedDeployments}\n" +
                                 $"Duration: {deploymentResult.Duration.TotalSeconds:F2} seconds";
 
-                MessageBox.Show(message, "Deployment Complete", 
-                    MessageBoxButtons.OK, 
+                MessageBox.Show(message, "Deployment Complete",
+                    MessageBoxButtons.OK,
                     deploymentResult.AllSuccessful ? MessageBoxIcon.Information : MessageBoxIcon.Warning);
 
-                statusLabel.Text = deploymentResult.AllSuccessful ? 
-                    "Deployment completed successfully" : 
+                statusLabel.Text = deploymentResult.AllSuccessful ?
+                    "Deployment completed successfully" :
                     "Deployment completed with errors";
             }
             catch (Exception ex)
             {
-                MessageBox.Show($"Deployment failed: {ex.Message}", "Error", 
+                MessageBox.Show($"Deployment failed: {ex.Message}", "Error",
                     MessageBoxButtons.OK, MessageBoxIcon.Error);
                 _logger.LogError("Deployment process failed", ex);
                 statusLabel.Text = "Deployment failed";
@@ -340,12 +350,13 @@ namespace MultiDbScriptDeployer
         private void SetControlsEnabled(bool enabled)
         {
             btnAddConnection.Enabled = enabled;
+            btnTestAll.Enabled = enabled;
             btnDeploy.Enabled = enabled;
             btnLoadScript.Enabled = enabled;
             btnSaveConnections.Enabled = enabled;
             btnLoadConnections.Enabled = enabled;
             txtScript.ReadOnly = !enabled;
-            
+
             foreach (var control in _connectionControls)
             {
                 control.Enabled = enabled;
@@ -394,15 +405,95 @@ namespace MultiDbScriptDeployer
                 }
                 else
                 {
-                    MessageBox.Show("Log file not found.", "Error", 
+                    MessageBox.Show("Log file not found.", "Error",
                         MessageBoxButtons.OK, MessageBoxIcon.Error);
                 }
             }
             catch (Exception ex)
             {
-                MessageBox.Show($"Error opening log file: {ex.Message}", "Error", 
+                MessageBox.Show($"Error opening log file: {ex.Message}", "Error",
                     MessageBoxButtons.OK, MessageBoxIcon.Error);
             }
+        }
+
+        private async void BtnTestAll_Click(object sender, EventArgs e)
+        {
+            if (_connectionControls.Count == 0)
+            {
+                MessageBox.Show("No connections to test.", "Info",
+                    MessageBoxButtons.OK, MessageBoxIcon.Information);
+                return;
+            }
+
+            // Disable button during testing
+            btnTestAll.Enabled = false;
+            btnTestAll.Text = "Testing...";
+            statusLabel.Text = "Testing all connections...";
+
+            int successCount = 0;
+            int failCount = 0;
+            int totalConnections = _connectionControls.Count;
+
+            _logger.LogInfo("========================================");
+            _logger.LogInfo("TESTING ALL CONNECTIONS");
+            _logger.LogInfo($"Total connections: {totalConnections}");
+            _logger.LogInfo("========================================");
+
+            foreach (var control in _connectionControls)
+            {
+                var connection = control.Connection;
+
+                if (!connection.IsValid())
+                {
+                    _logger.LogWarning($"Skipping invalid connection: {connection}");
+                    failCount++;
+                    continue;
+                }
+
+                _logger.LogInfo($"Testing: {connection}");
+
+                try
+                {
+                    await System.Threading.Tasks.Task.Run(() =>
+                    {
+                        using (var conn = new System.Data.SqlClient.SqlConnection(connection.GetConnectionString()))
+                        {
+                            conn.Open();
+                        }
+                    });
+
+                    successCount++;
+                    _logger.LogSuccess($"✓ Connection successful: {connection}");
+                }
+                catch (Exception ex)
+                {
+                    failCount++;
+                    _logger.LogError($"✗ Connection failed: {connection}", ex);
+                }
+            }
+
+            _logger.LogInfo("========================================");
+            _logger.LogInfo("TEST ALL COMPLETED");
+            _logger.LogSuccess($"Successful: {successCount}");
+            _logger.LogError($"Failed: {failCount}");
+            _logger.LogInfo("========================================");
+
+            // Show summary
+            string message = $"Connection Test Results:\n\n" +
+                            $"Total: {totalConnections}\n" +
+                            $"Successful: {successCount}\n" +
+                            $"Failed: {failCount}";
+
+            MessageBox.Show(message, "Test All Connections",
+                MessageBoxButtons.OK,
+                failCount == 0 ? MessageBoxIcon.Information : MessageBoxIcon.Warning);
+
+            // Restore button
+            btnTestAll.Enabled = true;
+            btnTestAll.Text = "Test All Connections";
+            statusLabel.Text = failCount == 0 ?
+                "All connections tested successfully" :
+                $"Connection testing completed - {failCount} failed";
         }
 
         private void BtnSaveConnections_Click(object sender, EventArgs e)
@@ -420,14 +511,14 @@ namespace MultiDbScriptDeployer
                         var connections = _connectionControls.Select(c => c.Connection).ToList();
                         string json = System.Text.Json.JsonSerializer.Serialize(connections, new System.Text.Json.JsonSerializerOptions { WriteIndented = true });
                         File.WriteAllText(saveFileDialog.FileName, json);
-                        
-                        MessageBox.Show("Connections saved successfully!", "Success", 
+
+                        MessageBox.Show("Connections saved successfully!", "Success",
                             MessageBoxButtons.OK, MessageBoxIcon.Information);
                         _logger.LogInfo($"Connections saved to: {saveFileDialog.FileName}");
                     }
                     catch (Exception ex)
                     {
-                        MessageBox.Show($"Error saving connections: {ex.Message}", "Error", 
+                        MessageBox.Show($"Error saving connections: {ex.Message}", "Error",
                             MessageBoxButtons.OK, MessageBoxIcon.Error);
                         _logger.LogError("Failed to save connections", ex);
                     }
@@ -473,14 +564,14 @@ namespace MultiDbScriptDeployer
                                 pnlConnections.Controls.Add(control);
                             }
 
-                            MessageBox.Show($"Loaded {connections.Count} connection(s) successfully!", "Success", 
+                            MessageBox.Show($"Loaded {connections.Count} connection(s) successfully!", "Success",
                                 MessageBoxButtons.OK, MessageBoxIcon.Information);
                             _logger.LogInfo($"Connections loaded from: {openFileDialog.FileName}");
                         }
                     }
                     catch (Exception ex)
                     {
-                        MessageBox.Show($"Error loading connections: {ex.Message}", "Error", 
+                        MessageBox.Show($"Error loading connections: {ex.Message}", "Error",
                             MessageBoxButtons.OK, MessageBoxIcon.Error);
                         _logger.LogError("Failed to load connections", ex);
                     }
