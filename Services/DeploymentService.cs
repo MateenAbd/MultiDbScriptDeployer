@@ -11,6 +11,7 @@ namespace MultiDbScriptDeployer.Services
     public class DeploymentService
     {
         private readonly Logger _logger;
+        public event EventHandler<DeploymentProgress> ProgressChanged;
 
         public DeploymentService(Logger logger)
         {
@@ -31,13 +32,26 @@ namespace MultiDbScriptDeployer.Services
             _logger.LogInfo($"Script length: {script.Length} characters");
             _logger.LogInfo("========================================");
 
+            int currentIndex = 0;
+
             foreach (var connection in connections)
             {
+                currentIndex++;
+
+                // Report progress
+                ProgressChanged?.Invoke(this, new DeploymentProgress
+                {
+                    CurrentIndex = currentIndex,
+                    TotalCount = connections.Count,
+                    CurrentServer = connection.ToString(),
+                    IsComplete = false
+                });
+
                 try
                 {
-                    _logger.LogInfo($"Processing: {connection}");
+                    _logger.LogInfo($"Processing [{currentIndex}/{connections.Count}]: {connection}");
                     await ExecuteScriptAsync(connection, script);
-                    
+
                     result.SuccessfulDeployments++;
                     _logger.LogSuccess($"✓ Successfully deployed to {connection}");
                 }
@@ -62,6 +76,14 @@ namespace MultiDbScriptDeployer.Services
             _logger.LogError($"Failed: {result.FailedDeployments}");
             _logger.LogInfo($"Duration: {result.Duration.TotalSeconds:F2} seconds");
             _logger.LogInfo("========================================");
+
+            ProgressChanged?.Invoke(this, new DeploymentProgress
+            {
+                CurrentIndex = connections.Count,
+                TotalCount = connections.Count,
+                CurrentServer = "Completed",
+                IsComplete = true
+            });
 
             return result;
         }
@@ -131,5 +153,15 @@ namespace MultiDbScriptDeployer.Services
         public int FailedDeployments { get; set; }
 
         public bool AllSuccessful => FailedDeployments == 0 && TotalConnections > 0;
+    }
+
+    public class DeploymentProgress
+    {
+        public int CurrentIndex { get; set; }
+        public int TotalCount { get; set; }
+        public string CurrentServer { get; set; }
+        public bool IsComplete { get; set; }
+
+        public int PercentComplete => TotalCount > 0 ? (CurrentIndex * 100) / TotalCount : 0;
     }
 }

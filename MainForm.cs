@@ -43,6 +43,7 @@ namespace MultiDbScriptDeployer
             InitializeComponents();
 
             _logger.LogAdded += Logger_LogAdded;
+            _deploymentService.ProgressChanged += DeploymentService_ProgressChanged;
             _logger.LogInfo("Application started");
         }
 
@@ -149,6 +150,9 @@ namespace MultiDbScriptDeployer
             {
                 Location = new Point(10, 330),
                 Size = new Size(1160, 20),
+                Style = ProgressBarStyle.Continuous,
+                Minimum = 0,
+                Maximum = 100,
                 Visible = false
             };
 
@@ -311,7 +315,9 @@ namespace MultiDbScriptDeployer
             // Disable controls
             SetControlsEnabled(false);
             progressBar.Visible = true;
-            progressBar.Style = ProgressBarStyle.Marquee;
+            progressBar.Style = ProgressBarStyle.Continuous;
+            progressBar.Value = 0; 
+            progressBar.Maximum = connections.Count;
             statusLabel.Text = "Deployment in progress...";
 
             try
@@ -576,6 +582,27 @@ namespace MultiDbScriptDeployer
                         _logger.LogError("Failed to load connections", ex);
                     }
                 }
+            }
+        }
+        private void DeploymentService_ProgressChanged(object sender, DeploymentProgress progress)
+        {
+            if (progressBar.InvokeRequired)
+            {
+                progressBar.Invoke(new Action(() => DeploymentService_ProgressChanged(sender, progress)));
+                return;
+            }
+
+            // Update progress bar
+            progressBar.Value = progress.CurrentIndex;
+
+            // Update status label
+            if (progress.IsComplete)
+            {
+                statusLabel.Text = "Deployment completed";
+            }
+            else
+            {
+                statusLabel.Text = $"Deploying to server {progress.CurrentIndex}/{progress.TotalCount}: {progress.CurrentServer}";
             }
         }
     }
